@@ -1,0 +1,279 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define NAME_LEN 50
+#define USER_LEN 30
+#define PASS_LEN 30
+#define ITEM_NAME_LEN 50
+#define INVENTORY_FILE "inventory.pages"
+#define REGISTER_FILE "register.pages"
+#define CRED_FILE "credentials.pages"
+
+typedef struct
+{
+    char firstName[NAME_LEN];
+    char lastName[NAME_LEN];
+    int day, month, year;
+    long long mobile;
+    char userId[USER_LEN];
+} User;
+
+typedef struct
+{
+    char userId[USER_LEN];
+    char password[PASS_LEN];
+} Credential;
+
+typedef struct
+{
+    char itemName[ITEM_NAME_LEN];
+    int quantity;
+    float price;
+} Item;
+
+/* function prototypes */
+void registerUser(void);
+int loginUser(char *loggedName); /* returns 1 if success */
+void loadInventory(Item items[], int *n);
+void placeOrder(const char *custName);
+
+int main(void)
+{
+    int choice;
+    char loggedName[NAME_LEN * 2];
+
+    while (1)
+    {
+        printf("===== MAIN MENU =====\n");
+        printf("1. Register\n");
+        printf("2. Login\n");
+        printf("3. Exit\n");
+        printf("Enter choice:");
+        scanf("%d", &choice);
+        getchar(); /* clear newline */
+
+        switch (choice)
+        {
+        case 1:
+            registerUser();
+            break;
+        case 2:
+            if (loginUser(loggedName))
+            {
+                printf("WELCOME %s", loggedName);
+                placeOrder(loggedName);
+            }
+            else
+            {
+                printf("Login failed.");
+            }
+            break;
+        case 3:
+            printf("Exiting program.");
+            exit(0);
+        default:
+            printf("Invalid choice.");
+        }
+    }
+    return 0;
+}
+
+/* Registration: asks details, writes to register.txt and credentials.txt */
+void registerUser(void)
+{
+    User u;
+    Credential c;
+    FILE *fReg, *fCred;
+
+    printf("===== REGISTRATION =====\n");
+    printf("First name : ");
+    scanf("%s", u.firstName);
+    printf("Last name  : ");
+    scanf("%s", u.lastName);
+    printf("DOB (dd-mm-yyyy):");
+    scanf("%d-%d-%d", &u.day, &u.month, &u.year);
+    printf("Mobile number : ");
+    scanf("%lld", &u.mobile);
+    printf("User ID : ");
+    scanf("%s", u.userId);
+    printf("Password:");
+    scanf("%s", c.password);
+
+    strcpy(c.userId, u.userId);
+
+    /* append personal data */
+    fReg = fopen(REGISTER_FILE, "ab");
+    if (!fReg)
+    {
+        perror("Error opening register file");
+        return;
+    }
+    fprintf(fReg, "%s %s %d %d %d %lld %s\n",
+            u.firstName, u.lastName,
+            u.day, u.month, u.year,
+            u.mobile, u.userId);
+    fclose(fReg);
+
+    /* append credentials */
+    fCred = fopen(CRED_FILE, "ab");
+    if (!fCred)
+    {
+        perror("Error opening credentials file");
+        return;
+    }
+    fprintf(fCred, "%s %s\n", c.userId, c.password);
+    fclose(fCred);
+
+    printf("Registration successful!\n");
+}
+
+/* Login: read credentials.txt and verify using strcmp */
+int loginUser(char *loggedName)
+{
+    char inUser[USER_LEN], inPass[PASS_LEN];
+    char fileUser[USER_LEN], filePass[PASS_LEN];
+    int found = 0;
+    FILE *fCred;
+
+    printf("===== LOGIN =====\n");
+    printf("User ID :");
+    scanf("%s", inUser);
+    printf("Password: ");
+    scanf("%s", inPass);
+
+    fCred = fopen(CRED_FILE, "r");
+    if (!fCred)
+    {
+        perror("Error opening credentials file");
+        return 0;
+    }
+
+    while (fscanf(fCred, "%s %s", fileUser, filePass) == 2)
+    {
+        if (strcmp(inUser, fileUser) == 0 &&
+            strcmp(inPass, filePass) == 0)
+        {
+            found = 1;
+            break;
+        }
+    }
+    fclose(fCred);
+
+    if (!found)
+    {
+        printf("Invalid user-id or password.\n");
+        return 0;
+    }
+
+    printf("Verified Successfully!\n");
+
+    /* find name from register.txt */
+    FILE *fReg = fopen(REGISTER_FILE, "r");
+    if (!fReg)
+    {
+        perror("Error opening register file");
+        return 0;
+    }
+    User u;
+    while (fscanf(fReg, "%s %s %d %d %d %lld %s",
+                  u.firstName, u.lastName,
+                  &u.day, &u.month, &u.year,
+                  &u.mobile, u.userId) == 7)
+    {
+        if (strcmp(inUser, u.userId) == 0)
+        {
+            sprintf(loggedName, "%s %s", u.firstName, u.lastName);
+            break;
+        }
+    }
+    fclose(fReg);
+    return 1;
+}
+
+/* load inventory from inventory.txt */
+void loadInventory(Item items[], int *n)
+{
+    FILE *fInv = fopen(INVENTORY_FILE, "r");
+    int i = 0;
+    if (!fInv)
+    {
+        perror("Error opening inventory file");
+        *n = 0;
+        return;
+    }
+    while (fscanf(fInv, "%s %d %f",
+                  items[i].itemName,
+                  &items[i].quantity,
+                  &items[i].price) == 3)
+    {
+        i++;
+    }
+    *n = i;
+    fclose(fInv);
+}
+
+/* after successful login: show items, take order, show bill */
+void placeOrder(const char *custName)
+{
+    Item items[100];
+    int n, choice, qty;
+    float total = 0.0f;
+
+    loadInventory(items, &n);
+    if (n == 0)
+    {
+        printf("No items in inventory.");
+        return;
+    }
+
+    while (1)
+    {
+        printf("===== INVENTORY =====");
+        printf("No of Item\tAvailable\tPrice");
+        for (int i = 0; i < n; i++)
+        {
+            printf("%d.  %s\t%d\t\t%.2f",
+                   i + 1, items[i].itemName,
+                   items[i].quantity, items[i].price);
+        }
+        printf("%d. Exit", n + 1);
+        printf("Enter choice: \n");
+        scanf("%d", &choice);
+
+        if (choice == n + 1)
+        {
+            break;
+        }
+        if (choice < 1 || choice > n)
+        {
+            printf("Invalid choice.\n");
+            continue;
+        }
+
+        Item *it = &items[choice - 1];
+        printf("Available quantity of %s: %d",
+               it->itemName, it->quantity);
+        printf("Enter quantity needed: ");
+        scanf("%d", &qty);
+
+        if (qty <= 0 || qty > it->quantity)
+        {
+            printf("Sorry, invalid quantity.\n");
+            continue;
+        }
+
+        float cost = qty * it->price;
+        total += cost;
+        it->quantity -= qty;
+
+        printf("Bill for this item: %.2f\n", cost);
+        printf("Order Successfully Placed!\n");
+    }
+
+    if (total > 0.0f)
+    {
+        printf("Total bill for %s: %.2f\n", custName, total);
+    }
+    printf("Exiting to main menu.\n");
+}
